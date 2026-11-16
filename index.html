@@ -1,0 +1,1014 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Dribble Lab</title>
+<meta name="theme-color" content="#11171c">
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: camera stage fills the screen; controls in a side panel (landscape) or below (portrait).
+   Single dark look on purpose: it's a camera tool used in a garage. */
+:root {
+  --bg: #11171c;
+  --panel: #19222a;
+  --line: #2a3640;
+  --fg: #e9eef1;
+  --muted: #94a3ad;
+  --accent: #f28c28;      /* basketball orange */
+  --good: #3fd17e;
+  --bad: #ff5d5d;
+  --warn: #ffc94a;
+  --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 14px/1.45 var(--font-body);
+  padding-left: max(0px, env(safe-area-inset-left, 0px));
+  padding-right: max(0px, env(safe-area-inset-right, 0px));
+}
+button, select, input { font: inherit; color: inherit; }
+button {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 9px 14px; cursor: pointer; min-height: 40px;
+}
+button:hover { border-color: #3d4d59; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #1a1006; font-weight: 600; }
+button.on { border-color: var(--accent); color: var(--accent); }
+select { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; }
+.app { display: grid; grid-template-rows: auto auto; min-height: 100%; }
+header {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px max(12px, env(safe-area-inset-right, 0px)) 8px max(12px, env(safe-area-inset-left, 0px));
+  border-bottom: 1px solid var(--line);
+}
+#logo {
+  background: none; border: 0; padding: 4px 2px; min-height: 0;
+  font: 700 18px var(--font-display); letter-spacing: .01em;
+}
+#logo span { color: var(--accent); }
+.chip { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.chip.dev { color: var(--warn); border-color: var(--warn); }
+.spacer { flex: 1; }
+.tools { display: flex; gap: 8px; flex-wrap: wrap; }
+main { display: grid; grid-template-columns: 1fr; min-height: 0; align-content: start; }
+@media (min-width: 760px) and (min-aspect-ratio: 5/4) {
+  .app { height: 100%; grid-template-rows: auto 1fr; }
+  main { grid-template-columns: 1fr 340px; }
+  .panel { border-left: 1px solid var(--line); overflow-y: auto; }
+}
+.stage-wrap { position: relative; min-height: 0; display: flex; align-items: center; justify-content: center; background: #0a0e11; }
+#view { display: block; max-width: 100%; max-height: calc(100vh - var(--hdr, 64px)); width: auto; height: auto; touch-action: none; }
+#view.mirror { transform: scaleX(-1); }
+.hud { position: absolute; left: 12px; top: 10px; pointer-events: none; display: grid; gap: 2px; text-shadow: 0 1px 3px #000; }
+.count { font: 700 64px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.count small { font: 500 14px var(--font-body); color: var(--muted); margin-left: 6px; }
+.last { font-size: 15px; }
+.last b { font-weight: 600; }
+.hud-right { position: absolute; right: 12px; top: 10px; text-align: right; pointer-events: none; text-shadow: 0 1px 3px #000; font-variant-numeric: tabular-nums; }
+.combo { font: 700 22px var(--font-display); color: var(--good); }
+.hint {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+  background: rgba(17,23,28,.86); border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 14px; max-width: calc(100% - 32px); text-align: center; pointer-events: none;
+}
+.toast {
+  position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%);
+  font: 700 26px var(--font-display); color: var(--warn); text-shadow: 0 2px 6px #000;
+  pointer-events: none; opacity: 0; transition: opacity .25s;
+  text-align: center; max-width: 90%;
+}
+.toast.show { opacity: 1; }
+.panel { padding: 12px max(14px, env(safe-area-inset-right, 0px)) 24px 14px; display: grid; gap: 14px; align-content: start; }
+section.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 10px; }
+summary { cursor: pointer; }
+section.card h2 { margin: 0; font: 600 15px var(--font-display); letter-spacing: .02em; }
+section.card.dev h2 { color: var(--warn); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row > label { color: var(--muted); }
+.big-count { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stat { background: var(--bg); border-radius: 10px; padding: 8px 10px; }
+.stat .k { font-size: 12px; color: var(--muted); }
+.stat .v { font: 700 28px/1.1 var(--font-display); font-variant-numeric: tabular-nums; }
+.plus { font: 700 22px var(--font-display); flex: 1; min-height: 56px; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 500; }
+.tbl { overflow-x: auto; }
+.pass { color: var(--good); } .fail { color: var(--bad); }
+.slider { display: grid; grid-template-columns: 120px 1fr 44px; gap: 8px; align-items: center; }
+.slider label { color: var(--muted); font-size: 13px; }
+.slider output { text-align: right; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.modes { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; }
+.modes button { padding: 8px 6px; font-size: 13px; }
+.log { font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--bg); border-radius: 8px; padding: 8px; height: 150px; overflow-y: auto; white-space: pre-wrap; color: var(--muted); }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.kv span:nth-child(odd) { color: var(--muted); }
+.note { font-size: 12.5px; color: var(--muted); margin: 0; }
+.swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--fg); display: inline-block; vertical-align: middle; }
+@media (max-height: 500px) {
+  header { padding-top: 4px; padding-bottom: 4px; gap: 6px; }
+  .tools button { padding: 5px 10px; min-height: 34px; font-size: 13px; }
+  .count { font-size: 48px; }
+}
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <button id="logo" type="button" aria-label="Dribble Lab">Dribble <span>Lab</span></button>
+    <span class="chip" id="modeChip">Camera</span>
+    <span class="chip dev" id="devChip" hidden>Developer mode</span>
+    <span class="spacer"></span>
+    <div class="tools">
+      <button id="startBtn" class="primary" type="button">Start camera</button>
+      <button id="flipBtn" type="button">Flip camera</button>
+      <button id="calBtn" type="button">Tap ball to set color</button>
+      <button id="resetBtn" type="button">Reset count</button>
+      <button id="recBtn" type="button">Record clip</button>
+    </div>
+  </header>
+  <main>
+    <div class="stage-wrap" id="stageWrap">
+      <canvas id="view" width="640" height="360" aria-label="Camera view with tracking overlay"></canvas>
+      <div class="hud">
+        <div class="count" id="count">0<small>dribbles</small></div>
+        <div class="last" id="last">Waiting for the ball</div>
+        <div class="last" id="boxStat"></div>
+      </div>
+      <div class="hud-right">
+        <div class="combo" id="combo"></div>
+        <div class="chip" id="fpsChip">-- fps</div>
+      </div>
+      <div class="toast" id="toast"></div>
+      <div class="hint" id="hint">Press Start camera, then tap the ball on screen so the app learns its color.</div>
+    </div>
+
+    <div class="panel">
+      <section class="card" aria-labelledby="howH">
+        <details>
+          <summary><h2 id="howH" style="display:inline">How to test</h2></summary>
+          <ol class="note" style="padding-left:18px;margin:10px 0 0;display:grid;gap:6px">
+            <li>Put the phone sideways on its stand about 3 feet up and 8 to 10 feet away. His whole body, feet included, should be on screen.</li>
+            <li>Press <b>Start camera</b> and allow the camera. Then press <b>Tap ball to set color</b> and tap the middle of the ball. Do this again whenever the lighting changes.</li>
+            <li>Check for a yellow circle on the ball, blue lines on his body, and an orange box beside his right foot.</li>
+            <li>Pick a test, press <b>Start test</b>, and press <b>Record clip</b>. Dribble for 1 minute, then stop recording.</li>
+            <li>Count by hand: open developer mode (tap the Dribble Lab logo 5 times), choose <b>Replay</b>, load the clip at 0.5x, and press <b>+1</b> for each bounce. Then press <b>Save result</b>.</li>
+            <li>When all 6 tests are done, press <b>Copy results</b> and paste them in our chat.</li>
+          </ol>
+          <p class="note" style="margin-top:8px">Pass: at least 95% match on every test, and the fps badge stays green (24 or more).</p>
+        </details>
+      </section>
+      <section class="card" aria-labelledby="testH">
+        <h2 id="testH">Garage test</h2>
+        <div class="row">
+          <label for="testSel">Test</label>
+          <select id="testSel">
+            <option>1. Steady right-hand dribble</option>
+            <option>2. Steady left-hand dribble</option>
+            <option>3. Fast low dribble</option>
+            <option>4. Messy beginner dribbling</option>
+            <option>5. Repeat 2, garage door closed</option>
+            <option>6. Repeat 2, other room</option>
+            <option>Desk test</option>
+            <option>Replay clip</option>
+          </select>
+        </div>
+        <div class="big-count">
+          <div class="stat"><div class="k">App counted</div><div class="v" id="appCount">0</div></div>
+          <div class="stat"><div class="k">You counted</div><div class="v" id="handCount">0</div></div>
+        </div>
+        <div class="row">
+          <button class="plus" id="handPlus" type="button">+1</button>
+          <button id="handMinus" type="button" aria-label="Subtract one">-1</button>
+        </div>
+        <div class="row">
+          <button id="testStart" type="button">Start test (zero both)</button>
+          <button id="testSave" type="button">Save result</button>
+        </div>
+        <p class="note">Tip: count by hand afterwards from a recorded clip in Replay, at slow speed. The test passes at 95% or better.</p>
+        <div class="tbl"><table>
+          <thead><tr><th>Test</th><th>App</th><th>You</th><th>Match</th><th>FPS</th></tr></thead>
+          <tbody id="results"></tbody>
+        </table></div>
+        <div class="row">
+          <button id="copyRes" type="button">Copy results</button>
+          <button id="clearRes" type="button">Clear results</button>
+        </div>
+      </section>
+
+      <section class="card dev" id="devCard" hidden aria-labelledby="devH">
+        <h2 id="devH">Developer mode</h2>
+        <div class="modes" role="group" aria-label="Input mode">
+          <button type="button" data-mode="camera">Camera</button>
+          <button type="button" data-mode="desk">Desk object</button>
+          <button type="button" data-mode="touch">Touch</button>
+          <button type="button" data-mode="robot">Robot</button>
+          <button type="button" data-mode="replay">Replay</button>
+        </div>
+        <p class="note" id="modeNote"></p>
+        <div class="row" id="robotRow" hidden>
+          <label for="robotSkill">Robot player</label>
+          <select id="robotSkill">
+            <option value="perfect">Perfect</option>
+            <option value="average" selected>Average</option>
+            <option value="struggling">Struggling</option>
+          </select>
+          <button id="robotPause" type="button">Pause</button>
+        </div>
+        <div id="replayRow" hidden class="row">
+          <input type="file" id="fileIn" accept="video/*">
+          <label for="rateSel">Speed</label>
+          <select id="rateSel"><option value="1">1x</option><option value="0.5">0.5x</option><option value="0.25">0.25x</option></select>
+          <button id="playBtn" type="button">Play / pause</button>
+          <button id="restartBtn" type="button">Restart</button>
+        </div>
+        <div class="row" id="touchRow" hidden>
+          <span class="note">Drag the ball up and down on the screen, or press the space bar for one dribble.</span>
+        </div>
+
+        <div class="kv" id="stats"></div>
+
+        <div class="slider"><label for="tolS">Color match</label><input type="range" id="tolS" min="6" max="40" value="16"><output id="tolO">16</output></div>
+        <div class="slider"><label for="sensS">Bounce sensitivity</label><input type="range" id="sensS" min="1" max="10" value="5"><output id="sensO">5</output></div>
+        <div class="slider"><label for="procS">Processing width</label><input type="range" id="procS" min="96" max="320" step="32" value="192"><output id="procO">192</output></div>
+        <div class="slider"><label for="poseEveryS">Body check every</label><input type="range" id="poseEveryS" min="1" max="4" value="1"><output id="poseEveryO">1</output></div>
+        <div class="row">
+          <button id="poseTog" type="button" class="on">Body tracking on</button>
+          <button id="maskTog" type="button">Show color mask</button>
+          <button id="soundTog" type="button" class="on">Sounds on</button>
+          <button id="mirrorTog" type="button" class="on">Mirror on</button>
+          <button id="sideTog" type="button">Box: right foot</button>
+        </div>
+        <div class="row"><span class="note">Ball color</span><span class="swatch" id="swatch"></span><span class="note" id="colorTxt">not set</span></div>
+
+        <h2>Coach brain preview</h2>
+        <div class="kv" id="coach"></div>
+        <div class="log" id="log" aria-live="polite"></div>
+        <div class="row"><button id="copyLog" type="button">Copy log</button><button id="devOff" type="button">Leave developer mode</button></div>
+      </section>
+    </div>
+  </main>
+</div>
+<video id="cam" playsinline muted hidden></video>
+
+<script type="module">
+// ===== MediaPipe (body tracking). Loaded lazily; the app works without it. =====
+const MP_VER = "0.10.14";
+const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}/vision_bundle.mjs`;
+const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}/wasm`;
+const POSE_MODEL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("dl." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("dl." + k, JSON.stringify(v)); } catch {} }
+};
+
+// ===== State =====
+const S = {
+  mode: "camera",              // camera | desk | touch | robot | replay
+  dev: store.get("dev", false) || location.hash === "#dev",
+  facing: store.get("facing", "user"),
+  mirror: store.get("mirror", true),
+  color: store.get("color", null), // {h,s,v}
+  tol: store.get("tol", 16),
+  sens: store.get("sens", 5),
+  procW: store.get("procW", 192),
+  poseOn: store.get("poseOn", true),
+  poseEvery: store.get("poseEvery", 1),
+  showMask: false,
+  sound: store.get("sound", true),
+  boxSide: store.get("boxSide", "right"),
+  calibrating: false,
+  stream: null,
+  W: 640, H: 360,
+  pose: null, poseLM: null, poseSmooth: null, poseMs: 0, poseFrame: 0, poseState: "off",
+  ball: null, ballR: 10, lastSeenT: -1e9,
+  trail: [],
+  fpsFrames: 0, fpsT: performance.now(), fps: 0, ballMs: 0, camFrames: 0, camFps: 0,
+  count: 0, handCount: 0, testStartCount: 0,
+  inBox: 0, outBox: 0, combo: 0, bestCombo: 0,
+  recent: [],                  // last dribbles for coach brain
+  level: 3, losses: [], lastDribbleT: 0, lastIdleWarn: 0,
+  robot: null, robotPaused: false,
+  touch: { x: 0.5, y: 0.5, down: false, script: null },
+  lastVideoT: -1,
+};
+if (S.dev) store.set("dev", true);
+
+// ===== Canvases =====
+const view = $("view"), vctx = view.getContext("2d");
+const src = document.createElement("canvas"), sctx = src.getContext("2d", { willReadFrequently: true });
+const proc = document.createElement("canvas"), pctx = proc.getContext("2d", { willReadFrequently: true });
+const video = $("cam");
+let mask = null, labels = null, maskW = 0, maskH = 0;
+
+function setSize(w, h) {
+  S.W = w; S.H = h;
+  src.width = view.width = w; src.height = view.height = h;
+  sizeProc();
+}
+function sizeProc() {
+  proc.width = S.procW; proc.height = Math.round(S.procW * S.H / S.W);
+  maskW = proc.width; maskH = proc.height;
+  mask = new Uint8Array(maskW * maskH); labels = new Int32Array(maskW * maskH);
+}
+setSize(640, 360);
+
+// ===== Logging =====
+const logLines = [];
+function log(msg) {
+  const t = new Date().toLocaleTimeString([], { hour12: false });
+  logLines.push(`${t}  ${msg}`); if (logLines.length > 200) logLines.shift();
+  const el = $("log"); el.textContent = logLines.slice(-60).join("\n"); el.scrollTop = el.scrollHeight;
+}
+
+// ===== Sounds =====
+let actx = null;
+function beep(freq, dur = 0.07, type = "sine", vol = 0.15) {
+  if (!S.sound) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = freq; g.gain.value = vol;
+    g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+    o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + dur);
+  } catch {}
+}
+let toastTimer = 0;
+function toast(msg) {
+  const el = $("toast"); el.textContent = msg; el.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("show"), 1800);
+}
+
+// ===== Color helpers =====
+function rgb2hsv(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  let h = 0;
+  if (d) {
+    if (mx === r) h = ((g - b) / d) % 6; else if (mx === g) h = (b - r) / d + 2; else h = (r - g) / d + 4;
+    h *= 60; if (h < 0) h += 360;
+  }
+  return [h, mx ? d / mx : 0, mx];
+}
+function setColor(c) {
+  S.color = c; store.set("color", c);
+  const el = $("swatch");
+  if (c) {
+    el.style.background = `hsl(${c.h.toFixed(0)} ${Math.round(Math.min(1, c.s) * 100)}% ${Math.round(c.v * 50)}%)`;
+    $("colorTxt").textContent = `hue ${c.h.toFixed(0)}°, sat ${(c.s * 100).toFixed(0)}%, bright ${(c.v * 100).toFixed(0)}%`;
+  } else { el.style.background = "transparent"; $("colorTxt").textContent = "not set"; }
+}
+function calibrateAt(nx, ny) {
+  // sample a 7x7 patch on the processing image around the tapped point, take the median
+  pctx.drawImage(src, 0, 0, maskW, maskH);
+  const cx = Math.round(nx * maskW), cy = Math.round(ny * maskH), R = 3;
+  const x0 = Math.max(0, cx - R), y0 = Math.max(0, cy - R);
+  const w = Math.min(maskW - x0, 2 * R + 1), h = Math.min(maskH - y0, 2 * R + 1);
+  const d = pctx.getImageData(x0, y0, w, h).data;
+  const hs = [], ss = [], vs = [];
+  for (let i = 0; i < d.length; i += 4) { const [hh, s, v] = rgb2hsv(d[i], d[i + 1], d[i + 2]); hs.push(hh); ss.push(s); vs.push(v); }
+  // circular median-ish for hue: rotate so the first sample sits at 180
+  const ref = hs[Math.floor(hs.length / 2)];
+  const rot = hs.map(x => ((x - ref + 540) % 360)).sort((a, b) => a - b);
+  const med = a => a.slice().sort((p, q) => p - q)[a.length >> 1];
+  const hMed = (rot[rot.length >> 1] + ref - 180 + 360) % 360;
+  const c = { h: hMed, s: med(ss), v: med(vs) };
+  if (c.s < 0.25) { toast("That spot isn't colorful enough. Tap the middle of the ball."); log(`calibration rejected: sat ${(c.s * 100).toFixed(0)}%`); return; }
+  setColor(c); S.ball = null; S.trail = []; resetDetector();
+  log(`ball color set: hue ${c.h.toFixed(0)}, sat ${(c.s * 100).toFixed(0)}%, bright ${(c.v * 100).toFixed(0)}%`);
+  toast("Ball color saved");
+}
+
+// ===== Ball finder: color mask + largest blob near the last position =====
+function findBall() {
+  if (!S.color) return null;
+  const t0 = performance.now();
+  pctx.drawImage(src, 0, 0, maskW, maskH);
+  const d = pctx.getImageData(0, 0, maskW, maskH).data;
+  const { h: H0, s: S0, v: V0 } = S.color, tol = S.tol;
+  const sMin = Math.max(0.22, S0 * 0.45), vMin = Math.max(0.15, V0 * 0.35);
+  const n = maskW * maskH;
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    const r = d[p], g = d[p + 1], b = d[p + 2];
+    const mx = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    const mn = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    const dd = mx - mn;
+    if (mx < vMin * 255 || dd < sMin * mx || dd === 0) { mask[i] = 0; continue; }
+    let hh;
+    if (mx === r) hh = ((g - b) / dd) % 6; else if (mx === g) hh = (b - r) / dd + 2; else hh = (r - g) / dd + 4;
+    hh *= 60; if (hh < 0) hh += 360;
+    let dh = Math.abs(hh - H0); if (dh > 180) dh = 360 - dh;
+    mask[i] = dh <= tol ? 1 : 0;
+  }
+  // connected components (4-neighbour flood fill)
+  labels.fill(0);
+  let best = null, lab = 0;
+  const stack = new Int32Array(n);
+  const prev = S.ball;
+  const sx = maskW / S.W, sy = maskH / S.H;
+  for (let i = 0; i < n; i++) {
+    if (!mask[i] || labels[i]) continue;
+    lab++; let sp = 0; stack[sp++] = i; labels[i] = lab;
+    let area = 0, sumx = 0, sumy = 0, minx = 1e9, maxx = -1, miny = 1e9, maxy = -1;
+    while (sp) {
+      const k = stack[--sp]; const x = k % maskW, y = (k / maskW) | 0;
+      area++; sumx += x; sumy += y;
+      if (x < minx) minx = x; if (x > maxx) maxx = x; if (y < miny) miny = y; if (y > maxy) maxy = y;
+      if (x > 0 && mask[k - 1] && !labels[k - 1]) { labels[k - 1] = lab; stack[sp++] = k - 1; }
+      if (x < maskW - 1 && mask[k + 1] && !labels[k + 1]) { labels[k + 1] = lab; stack[sp++] = k + 1; }
+      if (y > 0 && mask[k - maskW] && !labels[k - maskW]) { labels[k - maskW] = lab; stack[sp++] = k - maskW; }
+      if (y < maskH - 1 && mask[k + maskW] && !labels[k + maskW]) { labels[k + maskW] = lab; stack[sp++] = k + maskW; }
+    }
+    if (area < 4) continue;
+    const bw = maxx - minx + 1, bh = maxy - miny + 1;
+    const fill = area / (bw * bh);             // a ball fills about 0.78 of its box
+    if (fill < 0.35 || bw > 3.5 * bh || bh > 3.5 * bw) continue;  // reject streaks and odd shapes
+    const cx = sumx / area / sx, cy = sumy / area / sy;
+    let score = area;
+    if (prev) { const dist = Math.hypot(cx - prev.x, cy - prev.y) / S.H; score = area / (1 + 4 * dist); }
+    if (!best || score > best.score) best = { x: cx, y: cy, r: Math.sqrt(area / Math.PI) / sx, score, area };
+  }
+  S.ballMs = performance.now() - t0;
+  return best;
+}
+
+// ===== Dribble detector: watches the ball's height and finds bottoms (bounces) and tops (catches) =====
+const D = {};
+function resetDetector() { Object.assign(D, { dir: 0, minP: null, maxP: null, ext: null, lastTop: null, lastBottom: null, topHand: null }); }
+resetDetector();
+
+function bodyRefs() {
+  const L = S.poseSmooth; if (!L) return null;
+  const P = i => ({ x: L[i].x * S.W, y: L[i].y * S.H, v: L[i].visibility ?? 1 });
+  const ls = P(11), rs = P(12), lh = P(23), rh = P(24), lk = P(25), rk = P(26), la = P(27), ra = P(28), lw = P(15), rw = P(16);
+  return {
+    shoulderY: (ls.y + rs.y) / 2, hipY: (lh.y + rh.y) / 2, kneeY: (lk.y + rk.y) / 2,
+    floorY: Math.max(la.y, ra.y) + 0.02 * S.H, shoulderW: Math.max(Math.abs(ls.x - rs.x), 0.06 * S.W),
+    la, ra, lw, rw, lh, rh
+  };
+}
+function targetBox() {
+  // Box where the ball should bounce, sized from the body. Level changes its width.
+  const scale = [1.7, 1.4, 1.15, 1.0, 0.85][S.level - 1];
+  if (S.mode === "desk" || S.mode === "touch" || !S.poseSmooth) {
+    if (S.mode === "camera" || S.mode === "replay") return null;   // needs a body
+    const w = 0.22 * S.W * scale, cx = S.boxSide === "right" ? 0.62 * S.W : 0.38 * S.W;
+    return { x0: cx - w / 2, x1: cx + w / 2, y0: 0.32 * S.H, y1: 0.96 * S.H };
+  }
+  const b = bodyRefs();
+  const foot = S.boxSide === "right" ? b.ra : b.la, other = S.boxSide === "right" ? b.la : b.ra;
+  const out = Math.sign(foot.x - other.x) || (S.boxSide === "right" ? -1 : 1);
+  const w = 1.0 * b.shoulderW * scale;
+  const cx = foot.x + out * 0.45 * b.shoulderW;
+  const y0 = b.hipY - 0.15 * (b.hipY - b.shoulderY);
+  return { x0: cx - w / 2, x1: cx + w / 2, y0, y1: b.floorY };
+}
+function heightLabel(topY) {
+  const b = bodyRefs();
+  if (!b || S.mode === "desk" || S.mode === "touch") {
+    const amp = (D.lastBottom ? D.lastBottom.y : topY) - topY;
+    return `${(amp / (2 * Math.max(S.ballR, 2))).toFixed(1)} ball-heights`;
+  }
+  if (topY < b.shoulderY) return "above shoulders";
+  if (topY < b.hipY) return "chest height";
+  if (topY < b.kneeY) return "waist height";
+  return "below the knee";
+}
+function feedDetector(p, t) {
+  // p: {x,y} in canvas pixels, or null when the ball is not seen
+  const r = Math.max(S.ballR, 3);
+  const k = (11 - S.sens) / 5;                       // sensitivity 1..10 -> 2.0..0.2
+  const hyst = Math.max(0.012 * S.H, 0.5 * r) * k;
+  const minAmp = Math.max(0.035 * S.H, 1.4 * r) * k;
+  if (!p) {
+    if (t - S.lastSeenT > 450 && D.dir !== 0) { resetDetector(); }
+    return;
+  }
+  if (D.dir === 0) {
+    if (!D.minP || p.y < D.minP.y) D.minP = { ...p, t };
+    if (!D.maxP || p.y > D.maxP.y) D.maxP = { ...p, t };
+    if (p.y - D.minP.y > hyst) { D.dir = 1; D.lastTop = D.minP; D.topHand = handNear(D.minP); D.ext = { ...p, t }; }
+    else if (D.maxP.y - p.y > hyst) { D.dir = -1; D.lastBottom = D.maxP; D.ext = { ...p, t }; }
+    return;
+  }
+  if (D.dir === 1) {                                 // falling
+    if (p.y >= D.ext.y) D.ext = { ...p, t };
+    else if (D.ext.y - p.y > hyst) { onBottom(D.ext, minAmp); D.dir = -1; D.ext = { ...p, t }; }
+  } else {                                           // rising
+    if (p.y <= D.ext.y) D.ext = { ...p, t };
+    else if (p.y - D.ext.y > hyst) { onTop(D.ext); D.dir = 1; D.ext = { ...p, t }; }
+  }
+}
+function handNear(p) {
+  const b = bodyRefs(); if (!b || S.mode === "desk" || S.mode === "touch") return null;
+  const dl = Math.hypot(b.lw.x - p.x, b.lw.y - p.y), dr = Math.hypot(b.rw.x - p.x, b.rw.y - p.y);
+  return dl < dr ? "left hand" : "right hand";
+}
+function onTop(p) { D.lastTop = p; D.topHand = handNear(p); }
+function onBottom(p, minAmp) {
+  const top = D.lastTop;
+  D.lastBottom = p;
+  if (!top || p.y - top.y < minAmp) return;          // too small to be a dribble
+  S.count++;
+  const box = targetBox();
+  let inBox = null;
+  if (box) inBox = p.x >= box.x0 && p.x <= box.x1 && top.y >= box.y0 - 2;
+  const label = heightLabel(top.y);
+  const hand = D.topHand;
+  const rec = { t: p.t, inBox, label, hand, amp: p.y - top.y };
+  S.recent.push(rec); if (S.recent.length > 20) S.recent.shift();
+  S.lastDribbleT = p.t;
+  if (inBox === true) { S.inBox++; S.combo++; S.bestCombo = Math.max(S.bestCombo, S.combo); beep(S.combo % 10 === 0 ? 1320 : 880); if (S.combo === 10 || S.combo === 25 || S.combo === 50) toast(`${S.combo} in a row!`); }
+  else if (inBox === false) { S.outBox++; S.combo = 0; beep(220, 0.09, "triangle"); }
+  else beep(660);
+  $("last").innerHTML = `Last: <b>${label}</b>${hand ? " · " + hand : ""}${inBox == null ? "" : inBox ? " · <b style=\"color:var(--good)\">in box</b>" : " · <b style=\"color:var(--bad)\">outside box</b>"}`;
+  log(`dribble #${S.count}: ${label}${hand ? ", " + hand : ""}${inBox == null ? "" : inBox ? ", in box" : ", outside box"}`);
+  coachAfterDribble();
+  updateCounts();
+}
+
+// ===== Coach brain preview: adaptive difficulty + struggle safety net =====
+function coachAfterDribble() {
+  const scored = S.recent.filter(r => r.inBox != null);
+  const last3 = scored.slice(-3);
+  if (last3.length === 3 && last3.every(r => !r.inBox)) {
+    toast("So close! Try a smaller bounce");
+    log("coach: 3 misses in a row, encouraging");
+    if (S.level > 1) { S.level--; log(`coach: level down to ${S.level} (bigger box)`); }
+    S.recent.length = 0;
+    return;
+  }
+  const last10 = scored.slice(-10);
+  if (last10.length === 10) {
+    const rate = last10.filter(r => r.inBox).length / 10;
+    if (rate >= 0.9 && S.level < 5) { S.level++; log(`coach: ${Math.round(rate * 100)}% in box, level up to ${S.level}`); toast("Level up!"); S.recent.length = 0; }
+    else if (rate < 0.6 && S.level > 1) { S.level--; log(`coach: ${Math.round(rate * 100)}% in box, quietly level down to ${S.level}`); S.recent.length = 0; }
+  }
+}
+function coachTick(t) {
+  // lost ball twice in 30 s, or standing still 10 s
+  S.losses = S.losses.filter(x => t - x < 30000);
+  if (S.ball && S.lastDribbleT && t - S.lastDribbleT > 10000 && t - S.lastIdleWarn > 15000) {
+    S.lastIdleWarn = t; log("coach: no dribbles for 10 s, would offer a demo or a break game"); toast("Need a break? Watch the demo");
+  }
+}
+function noteLost(t) {
+  S.losses.push(t); log("ball lost");
+  if (S.losses.filter(x => t - x < 30000).length >= 2 && S.level > 1) {
+    S.level--; S.losses.length = 0; log(`coach: lost the ball twice in 30 s, level down to ${S.level}`);
+  }
+}
+
+// ===== Robot player (draws a pretend player into the source canvas) =====
+const ROBOT = {
+  perfect:    { period: 620, jitterX: 0.00, outProb: 0.00, highProb: 0.00, lostProb: 0.000, pauseProb: 0.00 },
+  average:    { period: 700, jitterX: 0.25, outProb: 0.15, highProb: 0.10, lostProb: 0.010, pauseProb: 0.02 },
+  struggling: { period: 820, jitterX: 0.45, outProb: 0.35, highProb: 0.25, lostProb: 0.040, pauseProb: 0.06 },
+};
+function newRobot() {
+  return { t0: performance.now(), phase: 0, cur: null, truth: 0, lostUntil: 0, pauseUntil: 0, lastT: performance.now() };
+}
+function robotPlan(sk, bodyCx, boxCx, boxW) {
+  const out = Math.random() < sk.outProb;
+  const offs = out ? (Math.random() < .5 ? -1 : 1) * (0.75 + Math.random() * 0.5) * boxW : (Math.random() - .5) * sk.jitterX * boxW;
+  return { x: boxCx + offs, high: Math.random() < sk.highProb, period: sk.period * (0.9 + Math.random() * 0.2) };
+}
+function drawRobotFrame(now) {
+  const W = S.W, H = S.H, R = S.robot, sk = ROBOT[$("robotSkill").value];
+  const dt = S.robotPaused ? 0 : now - R.lastT; R.lastT = now;
+  // figure geometry (raw image coords; the figure faces the camera, so its right side is on image left)
+  const cx = 0.5 * W, floor = 0.9 * H, hipY = 0.55 * H, kneeY = 0.72 * H, shY = 0.33 * H, headY = 0.22 * H;
+  const shW = 0.09 * W;
+  const lm = new Array(33).fill(null).map(() => ({ x: cx / W, y: headY / H, visibility: 1 }));
+  const set = (i, x, y) => { lm[i] = { x: x / W, y: y / H, visibility: 1 }; };
+  set(0, cx, headY);
+  set(11, cx + shW / 2, shY); set(12, cx - shW / 2, shY);
+  set(23, cx + 0.03 * W, hipY); set(24, cx - 0.03 * W, hipY);
+  set(25, cx + 0.04 * W, kneeY); set(26, cx - 0.04 * W, kneeY);
+  set(27, cx + 0.05 * W, floor - 0.01 * H); set(28, cx - 0.05 * W, floor - 0.01 * H);
+  // box (same rule as targetBox) to aim at
+  const scale = [1.7, 1.4, 1.15, 1.0, 0.85][S.level - 1];
+  const right = S.boxSide === "right";
+  const footX = right ? cx - 0.05 * W : cx + 0.05 * W;
+  const boxCx = footX + (right ? -1 : 1) * 0.45 * shW, boxW = shW * scale;
+  // timeline
+  let ball = null;
+  if (now < R.lostUntil) { ball = null; }
+  else if (now < R.pauseUntil) { ball = { x: R.cur ? R.cur.x : boxCx, y: hipY - 0.02 * H }; }
+  else {
+    if (!R.cur) R.cur = robotPlan(sk, cx, boxCx, boxW);
+    R.phase += dt / R.cur.period;
+    if (R.phase >= 1) {
+      R.phase -= 1; R.truth++;
+      if (Math.random() < sk.lostProb) { R.lostUntil = now + 2200; R.cur = null; R.phase = 0; }
+      else if (Math.random() < sk.pauseProb) { R.pauseUntil = now + 1500 + Math.random() * 2000; }
+      R.cur = robotPlan(sk, cx, boxCx, boxW);
+    }
+    if (R.cur && now >= R.lostUntil) {
+      const topY = R.cur.high ? shY - 0.02 * H : hipY - 0.02 * H, bottomY = floor - 0.035 * H;
+      const f = R.phase, s = f < 0.5 ? (2 * f) ** 2 : (2 - 2 * f) ** 2;
+      ball = { x: R.cur.x, y: topY + (bottomY - topY) * s };
+    }
+  }
+  // dribbling hand follows the ball near the top
+  const handX = ball ? ball.x : cx - shW;
+  const handY = ball ? Math.min(ball.y - 0.035 * H, hipY + 0.02 * H) : hipY;
+  if (right) { set(16, handX, Math.max(handY, shY + 0.1 * H)); set(14, (cx - shW / 2 + handX) / 2, shY + 0.12 * H); set(15, cx + shW * 0.7, hipY - 0.02 * H); set(13, cx + shW * 0.6, shY + 0.12 * H); }
+  else { set(15, handX, Math.max(handY, shY + 0.1 * H)); set(13, (cx + shW / 2 + handX) / 2, shY + 0.12 * H); set(16, cx - shW * 0.7, hipY - 0.02 * H); set(14, cx - shW * 0.6, shY + 0.12 * H); }
+  // paint the scene
+  const g = sctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "#3a3f44"); g.addColorStop(1, "#24272a");
+  sctx.fillStyle = g; sctx.fillRect(0, 0, W, H);
+  sctx.fillStyle = "#4a4136"; sctx.fillRect(0, floor, W, H - floor);
+  sctx.strokeStyle = "#c9b8a3"; sctx.lineWidth = Math.max(4, W / 160); sctx.lineCap = "round";
+  const P = i => [lm[i].x * W, lm[i].y * H];
+  const seg = (a, b) => { sctx.beginPath(); sctx.moveTo(...P(a)); sctx.lineTo(...P(b)); sctx.stroke(); };
+  [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28]].forEach(([a, b]) => seg(a, b));
+  sctx.beginPath(); sctx.arc(cx, headY, 0.045 * H, 0, 7); sctx.fillStyle = "#c9b8a3"; sctx.fill();
+  if (ball) { sctx.beginPath(); sctx.arc(ball.x, ball.y, 0.032 * H, 0, 7); sctx.fillStyle = "#3dff6e"; sctx.fill(); }
+  return lm;
+}
+
+// ===== Touch mode =====
+function drawTouchFrame(now) {
+  const W = S.W, H = S.H, T = S.touch;
+  sctx.fillStyle = "#2c3136"; sctx.fillRect(0, 0, W, H);
+  sctx.fillStyle = "#3d362e"; sctx.fillRect(0, 0.92 * H, W, 0.08 * H);
+  let y = T.y * H, x = T.x * W;
+  if (T.script) {                                     // space bar: one quick scripted dribble
+    const f = (now - T.script.t0) / 500;
+    if (f >= 1) T.script = null;
+    else { const s = f < 0.5 ? (2 * f) ** 2 : (2 - 2 * f) ** 2; y = T.script.y + (0.88 * H - T.script.y) * s; }
+  }
+  sctx.beginPath(); sctx.arc(x, y, 0.035 * H, 0, 7); sctx.fillStyle = "#3dff6e"; sctx.fill();
+}
+const ROBOT_COLOR = { h: 135, s: 0.76, v: 1 };
+
+// ===== Camera and replay =====
+async function startCamera() {
+  stopStream();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: S.facing, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 60 } }
+    });
+    S.stream = stream; video.srcObject = stream; video.muted = true;
+    await video.play();
+    const st = stream.getVideoTracks()[0].getSettings();
+    setSize(video.videoWidth || st.width || 1280, video.videoHeight || st.height || 720);
+    log(`camera on: ${S.W}x${S.H} at up to ${st.frameRate ? Math.round(st.frameRate) : "?"} fps (${S.facing === "user" ? "front" : "back"})`);
+    $("startBtn").textContent = "Restart camera";
+    hint(S.color ? "" : "Tap the ball on screen so the app learns its color.");
+    wakeLock();
+    watchCamFps();
+  } catch (e) {
+    log("camera error: " + e.name + " " + e.message);
+    hint(e.name === "NotAllowedError" ? "Camera permission was blocked. Allow the camera for this site in Chrome's settings, then press Start camera." : "Couldn't start the camera: " + e.message);
+  }
+}
+function stopStream() { if (S.stream) { S.stream.getTracks().forEach(t => t.stop()); S.stream = null; } }
+function watchCamFps() {
+  if (!video.requestVideoFrameCallback) return;
+  const cb = () => { S.camFrames++; if (S.stream || S.mode === "replay") video.requestVideoFrameCallback(cb); };
+  video.requestVideoFrameCallback(cb);
+}
+let wl = null;
+async function wakeLock() { try { wl = await navigator.wakeLock?.request("screen"); } catch {} }
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && (S.stream)) wakeLock(); });
+
+// recording raw camera (for Replay later)
+let rec = null, chunks = [];
+function toggleRecord() {
+  if (rec) { rec.stop(); return; }
+  if (!S.stream) { toast("Start the camera first"); return; }
+  const type = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4"].find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
+  if (!type) { toast("This browser can't record video"); return; }
+  chunks = [];
+  rec = new MediaRecorder(S.stream, { mimeType: type, videoBitsPerSecond: 6e6 });
+  rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+  rec.onstop = () => {
+    const blob = new Blob(chunks, { type: type.split(";")[0] });
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "");
+    a.href = URL.createObjectURL(blob); a.download = `dribble-test-${stamp}.${type.includes("mp4") ? "mp4" : "webm"}`;
+    document.body.appendChild(a); a.click(); a.remove();
+    log(`clip saved to Downloads (${(blob.size / 1e6).toFixed(1)} MB)`); toast("Clip saved to Downloads");
+    rec = null; $("recBtn").textContent = "Record clip"; $("recBtn").classList.remove("on");
+  };
+  rec.start(1000); $("recBtn").textContent = "Stop recording"; $("recBtn").classList.add("on");
+  log("recording started");
+}
+
+function loadReplay(file) {
+  stopStream();
+  video.srcObject = null; video.src = URL.createObjectURL(file); video.loop = false;
+  video.onloadedmetadata = () => {
+    setSize(video.videoWidth, video.videoHeight);
+    video.playbackRate = +$("rateSel").value;
+    video.play(); watchCamFps();
+    log(`replay: ${file.name} (${video.videoWidth}x${video.videoHeight}, ${video.duration.toFixed(1)} s)`);
+    resetCounts(); hint(S.color ? "" : "Pause on a frame where the ball is clear and tap it to set the color.");
+  };
+}
+
+// ===== Body tracking =====
+async function loadPose() {
+  if (S.pose || S.poseState === "loading") return;
+  S.poseState = "loading"; log("loading body tracking model...");
+  try {
+    const { PoseLandmarker, FilesetResolver } = await import(MP_URL);
+    const fs = await FilesetResolver.forVisionTasks(MP_WASM);
+    const opts = (delegate) => ({ baseOptions: { modelAssetPath: POSE_MODEL, delegate }, runningMode: "VIDEO", numPoses: 1 });
+    try { S.pose = await PoseLandmarker.createFromOptions(fs, opts("GPU")); log("body tracking ready (GPU)"); }
+    catch { S.pose = await PoseLandmarker.createFromOptions(fs, opts("CPU")); log("body tracking ready (CPU)"); }
+    S.poseState = "ready";
+  } catch (e) { S.poseState = "failed"; log("body tracking failed to load: " + (e.message || e)); }
+}
+let poseTs = 0;
+function runPose() {
+  if (!S.poseOn || !S.pose) return;
+  if (++S.poseFrame % S.poseEvery) return;
+  const t0 = performance.now();
+  poseTs = Math.max(poseTs + 1, Math.round(performance.now()));
+  try {
+    const res = S.pose.detectForVideo(video, poseTs);
+    S.poseLM = res.landmarks && res.landmarks[0] ? res.landmarks[0] : null;
+  } catch (e) { S.poseLM = null; }
+  S.poseMs = performance.now() - t0;
+}
+function smoothPose() {
+  const L = S.poseLM;
+  if (!L) { S.poseSmooth = null; return; }
+  if (!S.poseSmooth) { S.poseSmooth = L.map(p => ({ ...p })); return; }
+  for (let i = 0; i < L.length; i++) { const a = S.poseSmooth[i], b = L[i]; a.x += 0.5 * (b.x - a.x); a.y += 0.5 * (b.y - a.y); a.visibility = b.visibility; }
+}
+
+// ===== Main loop =====
+function frame(now) {
+  requestAnimationFrame(frame);
+  let tMedia = now, fresh = true;
+  const m = S.mode;
+  if (m === "camera" || m === "desk") {
+    if (!S.stream || video.readyState < 2) { drawIdle(); return; }
+    sctx.drawImage(video, 0, 0, S.W, S.H);
+    if (m === "camera") runPose();
+  } else if (m === "replay") {
+    if (video.readyState < 2) { drawIdle(); return; }
+    tMedia = video.currentTime * 1000;
+    fresh = tMedia !== S.lastVideoT; S.lastVideoT = tMedia;
+    if (!fresh) { render(); return; }
+    sctx.drawImage(video, 0, 0, S.W, S.H);
+    runPose();
+  } else if (m === "robot") {
+    S.poseLM = drawRobotFrame(now);
+  } else if (m === "touch") {
+    drawTouchFrame(now); S.poseLM = null;
+  }
+  smoothPose();
+  const b = findBall();
+  if (b) {
+    S.ballR += 0.2 * (b.r - S.ballR);
+    S.ball = b; S.lastSeenT = tMedia;
+    S.trail.push({ x: b.x, y: b.y }); if (S.trail.length > 24) S.trail.shift();
+    feedDetector({ x: b.x, y: b.y }, tMedia);
+  } else {
+    if (S.ball && tMedia - S.lastSeenT > 450) { S.ball = null; S.trail = []; if (S.count) noteLost(tMedia); }
+    feedDetector(null, tMedia);
+  }
+  coachTick(tMedia);
+  S.fpsFrames++;
+  if (now - S.fpsT > 1000) {
+    S.fps = S.fpsFrames * 1000 / (now - S.fpsT); S.camFps = S.camFrames * 1000 / (now - S.fpsT);
+    S.fpsFrames = 0; S.camFrames = 0; S.fpsT = now; updateStats();
+  }
+  render();
+}
+function drawIdle() {
+  vctx.fillStyle = "#0a0e11"; vctx.fillRect(0, 0, view.width, view.height);
+}
+function render() {
+  vctx.drawImage(src, 0, 0);
+  const W = S.W, H = S.H, lw = Math.max(2, W / 320);
+  if (S.showMask && mask) {
+    const img = pctx.createImageData(maskW, maskH);
+    for (let i = 0; i < mask.length; i++) { const p = i * 4; img.data[p] = 255; img.data[p + 1] = 60; img.data[p + 2] = 220; img.data[p + 3] = mask[i] ? 200 : 0; }
+    pctx.putImageData(img, 0, 0);
+    vctx.imageSmoothingEnabled = false; vctx.drawImage(proc, 0, 0, W, H); vctx.imageSmoothingEnabled = true;
+  }
+  // body
+  if (S.poseSmooth && S.mode !== "robot") {
+    const L = S.poseSmooth; vctx.strokeStyle = "rgba(120,200,255,.85)"; vctx.lineWidth = lw * 1.5;
+    [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28]].forEach(([a, b]) => {
+      vctx.beginPath(); vctx.moveTo(L[a].x * W, L[a].y * H); vctx.lineTo(L[b].x * W, L[b].y * H); vctx.stroke();
+    });
+  }
+  // target box
+  const box = targetBox();
+  if (box) {
+    const lastRec = S.recent[S.recent.length - 1];
+    const flash = lastRec && performance.now() - lastRec.t < 300 && S.mode !== "replay";
+    vctx.lineWidth = lw * 2;
+    vctx.strokeStyle = flash ? (lastRec.inBox ? "#3fd17e" : "#ff5d5d") : "rgba(242,140,40,.95)";
+    vctx.setLineDash([lw * 6, lw * 4]); vctx.strokeRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0); vctx.setLineDash([]);
+    vctx.fillStyle = "rgba(242,140,40,.10)"; vctx.fillRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
+  }
+  // ball and trail
+  if (S.trail.length > 1) {
+    vctx.strokeStyle = "rgba(255,201,74,.6)"; vctx.lineWidth = lw; vctx.beginPath();
+    S.trail.forEach((p, i) => i ? vctx.lineTo(p.x, p.y) : vctx.moveTo(p.x, p.y)); vctx.stroke();
+  }
+  if (S.ball) {
+    vctx.strokeStyle = "#ffc94a"; vctx.lineWidth = lw * 2;
+    vctx.beginPath(); vctx.arc(S.ball.x, S.ball.y, Math.max(S.ball.r * 1.25, 8), 0, 7); vctx.stroke();
+  }
+}
+
+// ===== UI =====
+function hint(msg) { const h = $("hint"); h.textContent = msg; h.hidden = !msg; }
+function updateCounts() {
+  const c = $("count"); c.firstChild.nodeValue = String(S.count);
+  $("appCount").textContent = S.count - S.testStartCount;
+  $("handCount").textContent = S.handCount;
+  const scored = S.inBox + S.outBox;
+  $("boxStat").textContent = scored ? `In box ${S.inBox} of ${scored} (${Math.round(100 * S.inBox / scored)}%)` : "";
+  $("combo").textContent = S.combo >= 3 ? `${S.combo} in a row` : "";
+}
+function updateStats() {
+  $("fpsChip").textContent = `${Math.round(S.fps)} fps`;
+  $("fpsChip").style.color = S.fps >= 24 ? "var(--good)" : "var(--bad)";
+  if (!S.dev) return;
+  const kv = [
+    ["Frames checked / s", S.fps.toFixed(1)],
+    ["Camera frames / s", S.camFps ? S.camFps.toFixed(1) : "n/a"],
+    ["Video size", `${S.W} x ${S.H}`],
+    ["Ball search", `${S.ballMs.toFixed(1)} ms`],
+    ["Body tracking", S.poseOn ? `${S.poseState}${S.pose ? ", " + S.poseMs.toFixed(1) + " ms" : ""}` : "off"],
+    ["Ball size", `${(2 * S.ballR).toFixed(0)} px`],
+  ];
+  if (S.mode === "robot" && S.robot) kv.push(["Robot really dribbled", String(S.robot.truth - (S.robot.truthStart || 0))], ["App counted", String(S.count - (S.robot.countStart || 0))]);
+  $("stats").innerHTML = kv.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("");
+  const scored = S.recent.filter(r => r.inBox != null).slice(-10);
+  $("coach").innerHTML = [
+    ["Level (1 easy, 5 hard)", S.level],
+    ["Box width", ["very wide", "wide", "normal", "snug", "tight"][S.level - 1]],
+    ["In box, last 10", scored.length ? `${scored.filter(r => r.inBox).length} of ${scored.length}` : "none yet"],
+    ["Best combo", S.bestCombo],
+    ["Ball lost (30 s)", S.losses.length],
+  ].map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("");
+}
+function resetCounts() {
+  S.count = 0; S.testStartCount = 0; S.handCount = 0; S.inBox = 0; S.outBox = 0; S.combo = 0; S.bestCombo = 0; S.recent = []; S.losses = [];
+  if (S.robot) { S.robot.truthStart = S.robot.truth; S.robot.countStart = 0; }
+  resetDetector(); $("last").textContent = "Waiting for the ball"; updateCounts(); updateStats();
+}
+
+const MODE_NOTES = {
+  camera: "Full test: phone on its stand 8 to 10 feet away, whole body in view. Tracks the ball and the body.",
+  desk: "Move a small bright object (sticky note, ping pong ball) up and down in front of the camera. Body tracking is off; the box is fixed on screen.",
+  touch: "No camera. Drag the green ball up and down, or press the space bar for one dribble. Good for checking screens, sounds and scoring.",
+  robot: "A pretend player dribbles on its own. Compare 'Robot really dribbled' with 'App counted' to check the counter, and watch the coach brain react.",
+  replay: "Load a clip you recorded. It goes through the same tracker. Use slow speed and the +1 button to count by hand.",
+};
+function setMode(m) {
+  S.mode = m;
+  document.querySelectorAll("[data-mode]").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
+  $("modeChip").textContent = { camera: "Camera", desk: "Desk object", touch: "Touch", robot: "Robot", replay: "Replay" }[m];
+  $("modeNote").textContent = MODE_NOTES[m];
+  $("robotRow").hidden = m !== "robot"; $("replayRow").hidden = m !== "replay"; $("touchRow").hidden = m !== "touch";
+  S.poseLM = null; S.poseSmooth = null; S.ball = null; S.trail = [];
+  if (m === "robot" || m === "touch") {
+    stopStream(); video.pause();
+    setSize(960, 540); S.savedColor = S.savedColor || S.color; setColor(ROBOT_COLOR);
+    S.robot = m === "robot" ? newRobot() : null; S.mirror = false; applyMirror(); hint("");
+  } else {
+    if (S.savedColor) { setColor(S.savedColor); S.savedColor = null; }
+    if (m === "replay") { stopStream(); S.mirror = false; applyMirror(); hint("Choose a video file in the developer panel."); }
+    else { S.mirror = store.get("mirror", true) && S.facing === "user"; applyMirror(); if (!S.stream) hint("Press Start camera."); }
+  }
+  if ((m === "camera" || m === "replay") && S.poseOn) loadPose();
+  resetCounts();
+  log(`mode: ${m}`);
+}
+function applyMirror() { view.classList.toggle("mirror", S.mirror); $("mirrorTog").classList.toggle("on", S.mirror); $("mirrorTog").textContent = S.mirror ? "Mirror on" : "Mirror off"; }
+function setDev(on) {
+  S.dev = on; store.set("dev", on);
+  $("devCard").hidden = !on; $("devChip").hidden = !on;
+  if (!on && S.mode !== "camera") setMode("camera");
+  log(on ? "developer mode on" : "developer mode off"); updateStats();
+}
+
+// logo: tap 5 times quickly to toggle developer mode
+let taps = [];
+$("logo").addEventListener("click", () => {
+  const t = performance.now(); taps = taps.filter(x => t - x < 2000); taps.push(t);
+  if (taps.length >= 5) { taps = []; setDev(!S.dev); toast(S.dev ? "Developer mode on" : "Developer mode off"); }
+});
+$("devOff").onclick = () => setDev(false);
+$("startBtn").onclick = () => { if (S.mode !== "camera" && S.mode !== "desk") setMode("camera"); startCamera(); if (S.mode === "camera" && S.poseOn) loadPose(); };
+$("flipBtn").onclick = () => { S.facing = S.facing === "user" ? "environment" : "user"; store.set("facing", S.facing); S.mirror = S.facing === "user" && store.get("mirror", true); applyMirror(); if (S.stream) startCamera(); };
+$("calBtn").onclick = () => { S.calibrating = !S.calibrating; $("calBtn").classList.toggle("on", S.calibrating); hint(S.calibrating ? "Tap the middle of the ball." : ""); };
+$("resetBtn").onclick = () => { resetCounts(); log("count reset"); };
+$("recBtn").onclick = toggleRecord;
+document.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => { setMode(b.dataset.mode); if (b.dataset.mode === "desk" || b.dataset.mode === "camera") startCamera(); });
+$("robotPause").onclick = () => { S.robotPaused = !S.robotPaused; $("robotPause").textContent = S.robotPaused ? "Resume" : "Pause"; };
+$("robotSkill").onchange = () => { resetCounts(); log("robot skill: " + $("robotSkill").value); };
+$("fileIn").onchange = e => { const f = e.target.files[0]; if (f) loadReplay(f); };
+$("rateSel").onchange = () => { video.playbackRate = +$("rateSel").value; };
+$("playBtn").onclick = () => { if (video.paused) video.play(); else video.pause(); };
+$("restartBtn").onclick = () => { video.currentTime = 0; resetCounts(); video.play(); };
+
+// tapping the view: calibrate, or drag in touch mode
+function viewPoint(e) {
+  const r = view.getBoundingClientRect();
+  let x = (e.clientX - r.left) / r.width; if (S.mirror) x = 1 - x;
+  return { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) };
+}
+view.addEventListener("pointerdown", e => {
+  const p = viewPoint(e);
+  if (S.mode === "touch") { S.touch.down = true; S.touch.x = p.x; S.touch.y = p.y; view.setPointerCapture(e.pointerId); return; }
+  if (S.calibrating || !S.color) {
+    if (S.mode === "robot") return;
+    calibrateAt(p.x, p.y); S.calibrating = false; $("calBtn").classList.remove("on");
+    hint("");
+  }
+});
+view.addEventListener("pointermove", e => { if (S.mode === "touch" && S.touch.down) { const p = viewPoint(e); S.touch.x = p.x; S.touch.y = p.y; } });
+view.addEventListener("pointerup", () => { S.touch.down = false; });
+window.addEventListener("keydown", e => {
+  if (S.mode === "touch" && e.code === "Space" && !e.repeat) { e.preventDefault(); S.touch.script = { t0: performance.now(), y: S.touch.y * S.H }; }
+});
+
+// hand counting and results
+$("handPlus").onclick = () => { S.handCount++; updateCounts(); };
+$("handMinus").onclick = () => { S.handCount = Math.max(0, S.handCount - 1); updateCounts(); };
+$("testStart").onclick = () => { S.testStartCount = S.count; S.handCount = 0; updateCounts(); log("test started: " + $("testSel").value); toast("Test started"); };
+let results = store.get("results", []);
+function renderResults() {
+  $("results").innerHTML = results.map(r => {
+    const match = r.hand ? Math.max(0, 1 - Math.abs(r.app - r.hand) / r.hand) : 0;
+    return `<tr><td>${r.test.split(".")[0]}</td><td>${r.app}</td><td>${r.hand}</td><td class="${match >= 0.95 ? "pass" : "fail"}">${(match * 100).toFixed(0)}%</td><td>${r.fps}</td></tr>`;
+  }).join("") || `<tr><td colspan="5" class="note">No results yet.</td></tr>`;
+}
+$("testSave").onclick = () => {
+  const app = S.count - S.testStartCount;
+  if (!S.handCount) { toast("Count by hand first (+1 button)"); return; }
+  results.push({ test: $("testSel").value, app, hand: S.handCount, fps: Math.round(S.fps), when: new Date().toISOString().slice(0, 16), mode: S.mode });
+  store.set("results", results); renderResults(); log(`saved: ${$("testSel").value}, app ${app}, hand ${S.handCount}`); toast("Result saved");
+};
+$("clearRes").onclick = () => { results = []; store.set("results", results); renderResults(); };
+async function copyText(txt, btn) {
+  try { await navigator.clipboard.writeText(txt); toast("Copied"); }
+  catch { const ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); toast("Copied"); } catch { toast("Couldn't copy"); } ta.remove(); }
+}
+$("copyRes").onclick = () => copyText(["Test\tApp\tYou\tMatch\tFPS\tWhen", ...results.map(r => `${r.test}\t${r.app}\t${r.hand}\t${r.hand ? (100 * Math.max(0, 1 - Math.abs(r.app - r.hand) / r.hand)).toFixed(0) + "%" : ""}\t${r.fps}\t${r.when}`)].join("\n") + `\n${navigator.userAgent}`);
+$("copyLog").onclick = () => copyText(logLines.join("\n"));
+
+// developer settings
+function bindSlider(id, out, key, fn) {
+  const el = $(id); el.value = S[key]; $(out).textContent = S[key];
+  el.oninput = () => { S[key] = +el.value; $(out).textContent = el.value; store.set(key, S[key]); fn && fn(); };
+}
+bindSlider("tolS", "tolO", "tol");
+bindSlider("sensS", "sensO", "sens");
+bindSlider("procS", "procO", "procW", sizeProc);
+bindSlider("poseEveryS", "poseEveryO", "poseEvery");
+function bindToggle(id, key, onTxt, offTxt, fn) {
+  const el = $(id);
+  const paint = () => { el.classList.toggle("on", !!S[key]); el.textContent = S[key] ? onTxt : offTxt; };
+  el.onclick = () => { S[key] = !S[key]; if (key !== "showMask") store.set(key, S[key]); paint(); fn && fn(); };
+  paint();
+}
+bindToggle("poseTog", "poseOn", "Body tracking on", "Body tracking off", () => { if (S.poseOn) loadPose(); else { S.poseLM = null; S.poseSmooth = null; } });
+bindToggle("maskTog", "showMask", "Hide color mask", "Show color mask");
+bindToggle("soundTog", "sound", "Sounds on", "Sounds off");
+$("mirrorTog").onclick = () => { S.mirror = !S.mirror; store.set("mirror", S.mirror); applyMirror(); };
+const paintSide = () => { $("sideTog").textContent = S.boxSide === "right" ? "Box: right foot" : "Box: left foot"; };
+$("sideTog").onclick = () => { S.boxSide = S.boxSide === "right" ? "left" : "right"; store.set("boxSide", S.boxSide); paintSide(); };
+paintSide();
+
+// boot
+const hdr = () => document.documentElement.style.setProperty('--hdr', document.querySelector('header').offsetHeight + 'px');
+new ResizeObserver(hdr).observe(document.querySelector('header')); hdr();
+setColor(S.color);
+setDev(S.dev);
+setMode("camera");
+applyMirror();
+renderResults();
+updateCounts();
+requestAnimationFrame(frame);
+window.__dl = S; // for debugging
+</script>
+</body>
+</html>
